@@ -19,6 +19,10 @@ C Note: JF(5)=.false. uses recommended (URSI) coefficients.
 C Note: JF(4)=.false. uses recommended Gulyeava B0 coefficients.
 C All other JF's usually should be .true.
 C
+C*****************************************************************
+C     Modified 2022 - 01 - 24 to fix some compilation errors in gfortran
+C     Split subroutine SUFE into SUFE80 and SUFE32 for two cases of inputs
+C     
 C The following is the original comment from IRIS12:
 C
 C IRIS12.FOR ---------------------------------------- OCTOBER 1991
@@ -162,9 +166,9 @@ C
        SUBROUTINE IRI90(JF,JMAG,ALATI,ALONG,RZ12,MMDD,DHOUR,
      &                  ZKM,NZ,DIRECT,OUTF,OARR)
       dimension zkm(nz), outf(11,nz), oarr(30)
-      character*(*) direct
-      character*50 path
-      character*10 filename
+      character(*) direct
+      character(50) path
+      character(10) filename
       INTEGER 		EGNR,AGNR,DAYNR,DDO,DO2,SEASON,SEADAY
       REAL 		LATI,LONGI,MO2,MO,MODIP,NMF2,MAGBR
       REAL  		NMF1,NME,NMD,NEI,MM,MLAT,MLONG,NOBO2
@@ -839,9 +843,9 @@ C
       CALL KOEFP1(PG1O)
       CALL KOEFP2(PG2O)
       CALL KOEFP3(PG3O)
-      CALL SUFE(PG1O,RIF,12,PF1O)
-      CALL SUFE(PG2O,RIF, 4,PF2O)
-      CALL SUFE(PG3O,RIF,12,PF3O)
+      CALL SUFE80(PG1O,RIF,12,PF1O)
+      CALL SUFE32(PG2O,RIF, 4,PF2O)
+      CALL SUFE80(PG3O,RIF,12,PF3O)
 c
 c calculate O+ profile parameters
 c
@@ -915,7 +919,7 @@ c
 c
 c make sure that rd(O2+) is less or equal 100-rd(O+) at O+ maximum
 c
-7106  Y=RPID(H0O,hfixo2,rdo2mx,2,MO2,DO2,HO2)
+7106  Y=RPIDO2(H0O,hfixo2,rdo2mx,2,MO2,DO2,HO2)
       IF(Y.GT.yo2h0o) then
       	MO2(3)=MO2(3)-0.02
       	GOTO 7106
@@ -974,7 +978,7 @@ C
       RCLUST=DION(7)
 	else
       ROX=RPID(HEIGHT,HFIXO,RDOMAX,msumo,MO,DDO,HO)
-      RO2X=RPID(HEIGHT,HFIXO2,rdo2mx,2,MO2,DO2,HO2)
+      RO2X=RPIDO2(HEIGHT,HFIXO2,rdo2mx,2,MO2,DO2,HO2)
       CALL RDHHE(HEIGHT,H0O,ROX,RO2X,NOBO2,10.,RHX,RHEX)
       RNOX=RDNO(HEIGHT,H0O,RO2X,ROX,NOBO2)
       RNX=-1.
@@ -1538,8 +1542,41 @@ c------------------------------------------------------------------
       RPID= n0 * SM        
       RETURN          
       END             
+C      
 C
-c
+      REAL FUNCTION RPIDO2 (H, H0, N0, M, ST, ID, XS)
+c------------------------------------------------------------------
+C D.BILITZA,1977,THIS ANALYTIC FUNCTION IS USED TO REPRESENT THE                
+C RELATIVE PRECENTAGE DENSITY OF ATOMAR AND MOLECULAR OXYGEN IONS.              
+C THE M+1 HEIGHT GRADIENTS ST(M+1) ARE CONNECTED WITH EPSTEIN-                  
+C STEP-FUNCTIONS AT THE STEP HEIGHTS XS(M) WITH TRANSITION                      
+C THICKNESSES ID(M). RPID(H0,H0,N0,....)=N0.       
+C ARGMAX is the highest allowed argument for EXP in your system.
+c------------------------------------------------------------------
+      REAL 		N0         
+      DIMENSION 	ID(4), ST(3), XS(4)                
+      COMMON  /ARGEXP/	ARGMAX
+
+      SUM=(H-H0)*ST(1)                             
+      DO 100  I=1,M   
+	      XI=ID(I)
+		aa = eptr(h ,xi,xs(i))
+		bb = eptr(h0,xi,xs(i))
+100	      SUM=SUM+(ST(I+1)-ST(I))*(AA-BB)*XI 
+      IF(ABS(SUM).LT.ARGMAX) then
+	SM=EXP(SUM)
+      else IF(SUM.Gt.0.0) then
+	SM=EXP(ARGMAX)
+      else
+	SM=0.0
+      endif
+      RPID= n0 * SM        
+      RETURN          
+      END             
+C
+C
+C
+C     
       SUBROUTINE RDHHE (H,HB,RDOH,RDO2H,RNO,PEHE,RDH,RDHE)                      
 C BILITZA,FEB.82,H+ AND HE+ RELATIVE PERECENTAGE DENSITY BELOW                  
 C 1000 KM. THE O+ AND O2+ REL. PER. DENSITIES SHOULD BE GIVEN                   
@@ -1638,7 +1675,7 @@ C CHOSEN AS TO APPROACH DANILOV-SEMENOV'S COMPILATION.
       END             
 C
 C
-      SUBROUTINE SUFE (FIELD,RFE,M,FE)             
+      SUBROUTINE SUFE80 (FIELD,RFE,M,FE)             
 C SELECTS THE REQUIRED ION DENSITY PARAMETER SET.
 C THE INPUT FIELD INCLUDES DIFFERENT SETS OF DIMENSION M EACH                
 C CARACTERISED BY 4 HEADER NUMBERS. RFE(4) SHOULD CONTAIN THE                   
@@ -1657,7 +1694,27 @@ C CHOSEN HEADER NUMBERS.FE(M) IS THE CORRESPONDING SET.
       RETURN          
       END             
 C
-C                     
+C
+      SUBROUTINE SUFE32 (FIELD,RFE,M,FE)             
+C SELECTS THE REQUIRED ION DENSITY PARAMETER SET.
+C THE INPUT FIELD INCLUDES DIFFERENT SETS OF DIMENSION M EACH                
+C CARACTERISED BY 4 HEADER NUMBERS. RFE(4) SHOULD CONTAIN THE                   
+C CHOSEN HEADER NUMBERS.FE(M) IS THE CORRESPONDING SET.                         
+      DIMENSION RFE(4),FE(4),FIELD(32),EFE(4)     
+      K=0             
+100   DO 101 I=1,4    
+      K=K+1           
+101   EFE(I)=FIELD(K)                              
+      DO 111 I=1,M    
+      K=K+1           
+111   FE(I)=FIELD(K)  
+      DO 120 I=1,4    
+      IF((EFE(I).GT.-10.0).AND.(RFE(I).NE.EFE(I))) GOTO 100                     
+120   CONTINUE        
+      RETURN          
+      END             
+
+C     
 C*************************************************************                  
 C************* PEAK VALUES ELECTRON DENSITY ******************                  
 C*************************************************************                  

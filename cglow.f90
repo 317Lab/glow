@@ -70,8 +70,8 @@ module cglow
 
   character(len=1024) :: data_dir
 
-  integer :: idate,iscale,jlocal,kchem,ierr
-  real    :: ut,glat,glong,f107,f107a,f107p,ap,ef,ec
+  integer :: idate,iscale,jlocal,kchem,ierr,iacc
+  real    :: ut,glat,glong,f107,f107a,f107p,ap,ef,ec,ethrm
   real    :: xuvfac, sza, dip, efrac
   real,dimension(nw) :: vcb
 
